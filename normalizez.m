@@ -6,7 +6,9 @@
 %  Baylan Watermeters, Research & Development Department
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [y,m_in,m_ax] = normalize(X)
-    m_ax = max(X);
-    m_in = min(X);
-    y = (X-m_in)/(m_ax-m_in);
+for i = 1 : size(X,1)
+    m_ax(i) = max(X(i,:));
+    m_in(i) = min(X(i,:));
+    y(i,:) = (X(i,:)-m_in(i))/(m_ax(i)-m_in(i));
+end
 end
