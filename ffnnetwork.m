@@ -20,7 +20,7 @@
 % ** bin represents bias values hidden layer neurons
 % ** bout represents bias value of output layer neurons
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, maxiter)
+function [Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, maxiter, alpha)
 X = input;
 Y = output;
 [feature, ~] = size(X); % sample is # of data, feature is # of input
@@ -51,7 +51,7 @@ hessian  = 2*(J')*J;
 param = param - pinv(hessian)*grad;
 
 % gradient descent
-% param = param - 0.000001*grad; % optional
+% param = param - alpha*grad; % optional
 
 [Win,Wout,bin,bout] = devecotrization(param,nin,nout,feature);
 [pred, error,netout,netin] = yprediction(X,Win,bin,Wout,bout,Y);
