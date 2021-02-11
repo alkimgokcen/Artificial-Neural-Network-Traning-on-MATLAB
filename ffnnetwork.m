@@ -60,10 +60,10 @@ disp('Error^2 norm');
 disp(norm(error));
 end
 function y = h(x)
-    y = tanh(x);
+    y = tansig(x);
 end
 function y = hprime(x)
-    y = (1-tanh(x).^2);
+    y = (1-tansig(x).^2);
 end
 function y = hOut(x)
     y = x;
