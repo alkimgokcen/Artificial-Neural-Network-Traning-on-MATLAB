@@ -32,8 +32,8 @@ for i = 1:length(t)
 end
 end
 function y = h(x)
-    y = tanh(x);
+    y = tansig(x);
 end
 function y = dh(x)
-    y = (1-tanh(x).^2);
+    y = (1-tansig(x).^2);
 end
