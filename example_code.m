@@ -41,7 +41,9 @@ output   = y_normalized;
 neuron   = 60;
 maxiter  = 100;
 
-[Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, maxiter);
+alpha = 0.001; % If gradient descent is employed (Learning Rate)
+
+[Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, maxiter, alpha);
 [prediction] = ffnetforcast(input, Win, Wout, bin, bout);
 
 plot(prediction); hold on; plot(y_normalized); 
