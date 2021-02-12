@@ -41,7 +41,7 @@ neuron   = 10;
 minMSE = 1; 
 
 [Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, minMSE);
-disp('Traning is over');
+disp('Training is over');
 [prediction] = ffnnetpredict(input, Win, Wout, bin, bout);
 figure();
 plot(prediction,'LineWidth',3); hold on; plot(y_normalized,'LineWidth',3); 
