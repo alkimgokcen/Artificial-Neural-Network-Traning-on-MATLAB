@@ -1,10 +1,5 @@
 # Artificial-Neural-Network
-A feedforward multi-layer perceptron Artificial Neural Network (ANN) model for MATLAB
-
-=> Comment out the related line in the "ffnnetwork.m" for gradient descent optimization.
-
-=> Comment out the related line in the "ffnnetwork.m" for Newton optimization (default).
+A feedforward multi-layer perceptron Artificial Neural Network (ANN) model trained by Levenberg-Marquadrt optimization method.
 
 => See "example_code.m" for example use.
-
-=> Levenberg Marquardt Optimization will be added.
+=> One dimensional optimization will be added to optimize learning rate.
