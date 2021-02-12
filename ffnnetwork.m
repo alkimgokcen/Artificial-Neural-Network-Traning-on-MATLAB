@@ -61,6 +61,8 @@ while loop1
         costz = 0.5*sum(error.^2); 
         
         if costz<costx
+            [~,sk,~,~,~,~] = goldenSection(LowerLimit,UpperLimit,1e-10,Y,nin,param,pk,feature,X);
+%             sk = 0.01;
             param = param + 0.001*pk;
             [Win,Wout,bin,bout] = devecotrization(zk,nin,nout,feature);
             [~, error,netout,netin] = yprediction(X,Win,bin,Wout,bout,Y);
