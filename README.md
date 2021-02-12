@@ -1,5 +1,5 @@
 # Artificial-Neural-Network
-A feedback multi-layer perceptron Artificial Neural Network (ANN) model for MATLAB
+A feedforward multi-layer perceptron Artificial Neural Network (ANN) model for MATLAB
 
 => Comment out the related line in the "ffnnetwork.m" for gradient descent optimization.
 
