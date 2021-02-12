@@ -3,3 +3,5 @@ A feedforward multi-layer perceptron Artificial Neural Network (ANN) model train
 
 => See "example_code.m" for example use.
 => One dimensional optimization is added to optimize learning rate.
+
+alkim.gokcen@outlook.com
