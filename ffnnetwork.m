@@ -62,7 +62,7 @@ while loop1
         
         if costz<costx
             [~,sk,~,~,~,~] = goldenSection(LowerLimit,UpperLimit,1e-10,Y,nin,param,pk,feature,X);
-%             sk = 0.01;
+            % sk = newtonRhapson(param,pk,X,Y,nin,feature);
             param = param + 0.001*pk;
             [Win,Wout,bin,bout] = devecotrization(zk,nin,nout,feature);
             [~, error,netout,netin] = yprediction(X,Win,bin,Wout,bout,Y);
