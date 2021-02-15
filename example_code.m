@@ -14,6 +14,8 @@
 % ** neuron is the # of neuron in hidden layer
 % ** minMSE is termination condition which represents minimum MSE traning
 %    error should be achieved
+% ** minGRAD is the termination condition which represents the Gradient
+%    vector norm should be achieved.
 % ** Win/Wout/bin/bout are model parameters. Ws are weights, Bs are biases
 % ** ffnnetpredict() predicts the first input related output.
 % ** rsquared() computes R2 and Adj.R2 metrics.
@@ -38,9 +40,11 @@ output   = y_normalized;
 
 neuron   = 10;
 
-minMSE = 1; 
+minMSE = 1;
 
-[Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, minMSE);
+minGRAD = 1e-3;
+
+[Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, minMSE, minGrad);
 disp('Training is over');
 [prediction] = ffnnetpredict(input, Win, Wout, bin, bout);
 figure();
