@@ -6,7 +6,7 @@
 %  Baylan Watermeters, Research & Development Department
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [Win,Wout,bin,bout] = devecotrization(vector,N,numout,feature)
+function [Win,Wout,bin,bout] = devectorization(vector,N,numout,feature)
     counter = 1;
     for i=1:feature
         for j=1:N
