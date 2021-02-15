@@ -12,6 +12,7 @@
 %    the #of sample
 % ** neuron is a scalar value that represents the # of hiddenLayer neurons
 % ** minMSE is minimum traning error shoudl be achieved
+% ** minGRAD ,s minimum gradient vector norm
 % ** feature is # of feature
 % ** nin is # of neuron
 % ** nout is # of output
@@ -24,7 +25,7 @@
 % ** pk, zk, param are the cendidate steps (pk,zk) and coefficient vector.
 % ** costx is the traning cost.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, minMSE)
+function [Win, Wout, bin, bout, nin, pred] = ffnnetwork(input, output, neuron, minMSE, minGRAD)
 X = input;
 Y = output;
 [feature, ~] = size(X); % sample is # of data, feature is # of input
@@ -82,7 +83,7 @@ while loop1
             loop2 = 0;
         end
     end
-    if costx<minMSE
+    if costx<minMSE && norm(2*J'*error')<minGRAD
         loop1 = 0;
     end
 end
