@@ -1,0 +1,5 @@
+backend/venv/
+backend/venv/
+__pycache__/
+*.pyc
+server.log
