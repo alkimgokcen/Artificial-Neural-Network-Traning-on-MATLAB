@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trading Bot Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: none; }
+        .card-header { background-color: #fff; border-bottom: 1px solid #edf2f7; font-weight: 600; border-radius: 12px 12px 0 0 !important; }
+        .stat-card { padding: 20px; text-align: center; }
+        .stat-value { font-size: 2rem; font-weight: bold; margin: 10px 0; }
+        .stat-label { color: #6c757d; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .text-green { color: #28a745; }
+        .text-red { color: #dc3545; }
+        .badge-buy { background-color: #28a745; }
+        .badge-sell { background-color: #dc3545; }
+        .badge-hold { background-color: #6c757d; }
+
+        /* Table Styles */
+        .table-responsive { max-height: 400px; overflow-y: auto; }
+        table thead th { position: sticky; top: 0; background-color: #fff; z-index: 1; }
+
+        .header-area {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px 0;
+            margin-bottom: 30px;
+            border-radius: 0 0 20px 20px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="header-area shadow">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="fa-brands fa-bitcoin text-warning"></i> Auto Crypto Bot (Gate.io)</h2>
+                <p class="mb-0 opacity-75">Live Paper Trading Dashboard | Strategy: RSI + MACD + Bollinger Bands</p>
+            </div>
+            <div>
+                <span id="connection-status" class="badge bg-secondary mb-2"><i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...</span><br>
+                <button id="reset-btn" class="btn btn-sm btn-outline-light"><i class="fa-solid fa-rotate-right"></i> Reset to $100</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Main Stats Row -->
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-label">Total Portfolio Value</div>
+                    <div class="stat-value" id="total-value">$0.00</div>
+                    <div id="total-pnl" class="text-muted"><i class="fa-solid fa-minus"></i> 0.00% ($0.00)</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-label">Available Cash (USDT)</div>
+                    <div class="stat-value" id="cash-value">$0.00</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header"><i class="fa-solid fa-chart-pie"></i> Asset Allocation</div>
+                    <div class="card-body d-flex justify-content-center">
+                        <div style="height: 150px; width: 150px;">
+                            <canvas id="allocationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prices and Signals -->
+        <div class="row mt-2">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header"><i class="fa-solid fa-bolt text-warning"></i> Live Market & Signals</div>
+                    <div class="card-body">
+                        <div class="row text-center" id="market-data">
+                            <!-- Populated by JS -->
+                            <div class="col-md-4">
+                                <h5>BTC/USDT</h5>
+                                <h3 id="price-btc">--</h3>
+                                <div>Signal: <span id="signal-btc" class="badge badge-hold">HOLD</span></div>
+                            </div>
+                            <div class="col-md-4">
+                                <h5>ETH/USDT</h5>
+                                <h3 id="price-eth">--</h3>
+                                <div>Signal: <span id="signal-eth" class="badge badge-hold">HOLD</span></div>
+                            </div>
+                            <div class="col-md-4">
+                                <h5>SOL/USDT</h5>
+                                <h3 id="price-sol">--</h3>
+                                <div>Signal: <span id="signal-sol" class="badge badge-hold">HOLD</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Positions and History -->
+        <div class="row mt-2">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header"><i class="fa-solid fa-wallet text-primary"></i> Current Open Positions</div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="positions-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Asset</th>
+                                        <th>Amount</th>
+                                        <th>Avg Entry</th>
+                                        <th>Current Price</th>
+                                        <th>Value</th>
+                                        <th>PnL %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="no-positions" class="p-4 text-center text-muted" style="display:none;">
+                            No open positions. Waiting for buy signals...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header"><i class="fa-solid fa-clock-rotate-left text-info"></i> Trade History</div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0" id="history-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Pair</th>
+                                        <th>Side</th>
+                                        <th>Amount</th>
+                                        <th>Price</th>
+                                        <th>Total (USDT)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="no-history" class="p-4 text-center text-muted" style="display:none;">
+                            No trades executed yet.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script to handle WebSocket and UI updates -->
+    <script>
+        const API_BASE = 'http://127.0.0.1:8000';
+        const WS_URL = 'ws://127.0.0.1:8000/ws';
+        let ws;
+        let allocChart;
+
+        // Initialize Chart
+        function initChart() {
+            const ctx = document.getElementById('allocationChart').getContext('2d');
+            allocChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['USDT'],
+                    datasets: [{
+                        data: [100],
+                        backgroundColor: ['#6c757d', '#f7931a', '#627eea', '#14f195'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        function formatCurrency(val) {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        }
+
+        function formatCrypto(val, precision=6) {
+            return parseFloat(val).toFixed(precision);
+        }
+
+        function getBadgeClass(side_or_signal) {
+            if(side_or_signal === 'BUY') return 'badge-buy';
+            if(side_or_signal === 'SELL') return 'badge-sell';
+            return 'badge-hold';
+        }
+
+        function updateUI(data) {
+            if(!data || !data.portfolio) return;
+
+            const p = data.portfolio;
+
+            // 1. Stats
+            document.getElementById('total-value').innerText = formatCurrency(p.total_value_usd);
+            document.getElementById('cash-value').innerText = formatCurrency(p.cash_usd);
+
+            const pnlEl = document.getElementById('total-pnl');
+            const pnlClass = p.total_pnl_usd >= 0 ? 'text-green' : 'text-red';
+            const pnlIcon = p.total_pnl_usd >= 0 ? '<i class="fa-solid fa-arrow-trend-up"></i>' : '<i class="fa-solid fa-arrow-trend-down"></i>';
+            pnlEl.innerHTML = `${pnlIcon} <span class="${pnlClass}">${p.total_pnl_pct.toFixed(2)}% (${formatCurrency(p.total_pnl_usd)})</span>`;
+
+            // 2. Prices & Signals
+            if(data.prices) {
+                document.getElementById('price-btc').innerText = formatCurrency(data.prices['BTC'] || 0);
+                document.getElementById('price-eth').innerText = formatCurrency(data.prices['ETH'] || 0);
+                document.getElementById('price-sol').innerText = formatCurrency(data.prices['SOL'] || 0);
+            }
+            if(data.signals) {
+                const btcSig = data.signals['BTC_USDT'] || 'HOLD';
+                const ethSig = data.signals['ETH_USDT'] || 'HOLD';
+                const solSig = data.signals['SOL_USDT'] || 'HOLD';
+
+                document.getElementById('signal-btc').className = `badge ${getBadgeClass(btcSig)}`;
+                document.getElementById('signal-btc').innerText = btcSig;
+
+                document.getElementById('signal-eth').className = `badge ${getBadgeClass(ethSig)}`;
+                document.getElementById('signal-eth').innerText = ethSig;
+
+                document.getElementById('signal-sol').className = `badge ${getBadgeClass(solSig)}`;
+                document.getElementById('signal-sol').innerText = solSig;
+            }
+
+            // 3. Open Positions
+            const tbody = document.querySelector('#positions-table tbody');
+            tbody.innerHTML = '';
+            let hasPositions = false;
+
+            const chartLabels = ['USDT'];
+            const chartData = [p.cash_usd];
+
+            if(p.assets && Object.keys(p.assets).length > 0) {
+                for(const [asset, info] of Object.entries(p.assets)) {
+                    if(info.amount > 0) {
+                        hasPositions = true;
+                        const pnlColor = info.pnl_pct >= 0 ? 'text-green' : 'text-red';
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><strong>${asset}</strong></td>
+                            <td>${formatCrypto(info.amount)}</td>
+                            <td>${formatCurrency(info.avg_entry)}</td>
+                            <td>${formatCurrency(info.price)}</td>
+                            <td>${formatCurrency(info.value)}</td>
+                            <td class="${pnlColor}"><strong>${info.pnl_pct.toFixed(2)}%</strong></td>
+                        `;
+                        tbody.appendChild(tr);
+
+                        chartLabels.push(asset);
+                        chartData.push(info.value);
+                    }
+                }
+            }
+
+            document.getElementById('positions-table').style.display = hasPositions ? 'table' : 'none';
+            document.getElementById('no-positions').style.display = hasPositions ? 'none' : 'block';
+
+            // Update Chart
+            allocChart.data.labels = chartLabels;
+            allocChart.data.datasets[0].data = chartData;
+            allocChart.update();
+
+            // 4. Trade History
+            if(data.history) {
+                const hbody = document.querySelector('#history-table tbody');
+                hbody.innerHTML = '';
+
+                if(data.history.length === 0) {
+                    document.getElementById('history-table').style.display = 'none';
+                    document.getElementById('no-history').style.display = 'block';
+                } else {
+                    document.getElementById('history-table').style.display = 'table';
+                    document.getElementById('no-history').style.display = 'none';
+
+                    data.history.forEach(t => {
+                        const tr = document.createElement('tr');
+                        const sideColor = t.side === 'BUY' ? 'text-green' : 'text-red';
+                        tr.innerHTML = `
+                            <td><small>${t.timestamp.split(' ')[1]}</small></td>
+                            <td><strong>${t.pair.split('_')[0]}</strong></td>
+                            <td class="${sideColor}"><strong>${t.side}</strong></td>
+                            <td>${formatCrypto(t.amount)}</td>
+                            <td>$${t.price.toLocaleString()}</td>
+                            <td>$${t.total.toFixed(2)}</td>
+                        `;
+                        hbody.appendChild(tr);
+                    });
+                }
+            }
+        }
+
+        function connectWebSocket() {
+            const statusBadge = document.getElementById('connection-status');
+
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                statusBadge.className = 'badge bg-success mb-2';
+                statusBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Connected';
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateUI(data);
+                } catch(e) {
+                    console.error("Error parsing WS data", e);
+                }
+            };
+
+            ws.onclose = () => {
+                statusBadge.className = 'badge bg-danger mb-2';
+                statusBadge.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Disconnected';
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error("WebSocket error:", err);
+            };
+        }
+
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            connectWebSocket();
+
+            // Reset Button Handler
+            document.getElementById('reset-btn').addEventListener('click', async () => {
+                const btn = document.getElementById('reset-btn');
+                const origHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Resetting...';
+                btn.disabled = true;
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/reset`, { method: 'POST' });
+                    if(response.ok) {
+                        // Let WS update UI on next tick, or fetch manually if needed.
+                        setTimeout(() => alert("Bot state reset to $100"), 500);
+                    }
+                } catch(e) {
+                    alert("Error resetting bot");
+                } finally {
+                    btn.innerHTML = origHtml;
+                    btn.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
