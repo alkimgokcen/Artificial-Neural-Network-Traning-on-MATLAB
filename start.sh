@@ -4,21 +4,41 @@ echo "================================================"
 echo "    🚀 Starting Gate.io Crypto Trading Bot    "
 echo "================================================"
 
+# Determine which python command to use
+if command -v python3 &>/dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &>/dev/null; then
+    PYTHON_CMD="python"
+else
+    echo "Error: Python is not installed or not in PATH."
+    exit 1
+fi
+
 # Step 1: Check and Setup Python Environment
 echo -e "\n[1/3] Setting up Python Backend Environment..."
 cd backend || exit
 
 if [ ! -d "venv" ]; then
     echo "Creating virtual environment..."
-    python3 -m venv venv
+    $PYTHON_CMD -m venv venv
 fi
 
-# Activate virtual environment
-source venv/bin/activate
+# Activate virtual environment (handle Windows vs Mac/Linux)
+if [ -f "venv/Scripts/activate" ]; then
+    source venv/Scripts/activate
+elif [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+else
+    echo "Error: Could not find virtual environment activation script."
+    exit 1
+fi
 
-# Install dependencies (quietly to reduce noise)
+# Install dependencies with trusted host flags to bypass SSL issues
 echo "Installing dependencies..."
-pip install -r requirements.txt -q
+pip install -r requirements.txt \
+    --trusted-host pypi.org \
+    --trusted-host pypi.python.org \
+    --trusted-host files.pythonhosted.org -q
 
 # Step 2: Start the FastAPI Backend Server
 echo -e "\n[2/3] Starting Backend Server on port 8000..."
