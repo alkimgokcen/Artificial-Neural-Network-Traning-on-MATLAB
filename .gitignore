@@ -3,3 +3,5 @@ backend/venv/
 __pycache__/
 *.pyc
 server.log
+frontend/frontend.log
+log.txt
