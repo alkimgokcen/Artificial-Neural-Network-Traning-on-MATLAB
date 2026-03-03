@@ -1,10 +1,11 @@
-from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import time
 import json
 import logging
 from typing import Dict, Any
+import pandas as pd
 
 from gateio_client import GateIOClient
 from trading_algorithm import TradingAlgorithm
@@ -35,8 +36,17 @@ engine = PaperTradingEngine(initial_balance=100.0)
 latest_state = {
     "prices": {},
     "signals": {},
+    "metrics": {},
     "portfolio": {},
-    "isRunning": False
+    "isRunning": False,
+    "algo_params": {
+        "rsi_period": algo.rsi_period,
+        "macd_fast": algo.macd_fast,
+        "macd_slow": algo.macd_slow,
+        "macd_signal": algo.macd_signal,
+        "bb_period": algo.bb_period,
+        "bb_std": algo.bb_std
+    }
 }
 
 # WebSocket connection manager
@@ -82,12 +92,24 @@ async def run_bot_loop():
 
             # 3. Analyze Data and Generate Signals
             signals = {}
+            metrics = {}
             for pair in TRADE_PAIRS:
                 # Need sufficient historical data for MA/RSI/Bollinger Bands
                 df = gateio.get_candlesticks(pair, interval="1m", limit=100)
                 df_with_indicators = algo.add_indicators(df)
                 signal = algo.evaluate(df_with_indicators)
                 signals[pair] = signal
+
+                # Extract latest metrics for UI
+                if not df_with_indicators.empty and 'rsi' in df_with_indicators.columns:
+                    latest = df_with_indicators.iloc[-1]
+                    metrics[pair] = {
+                        "rsi": float(latest.get('rsi', 0)) if pd.notna(latest.get('rsi')) else 0,
+                        "macd": float(latest.get('macd', 0)) if pd.notna(latest.get('macd')) else 0,
+                        "macd_signal": float(latest.get('macd_signal', 0)) if pd.notna(latest.get('macd_signal')) else 0,
+                        "bb_low": float(latest.get('bb_low', 0)) if pd.notna(latest.get('bb_low')) else 0,
+                        "bb_high": float(latest.get('bb_high', 0)) if pd.notna(latest.get('bb_high')) else 0,
+                    }
 
                 # 4. Execute Trades
                 current_price = float(tickers[pair]['last'])
@@ -110,6 +132,7 @@ async def run_bot_loop():
                              logger.info(f"Bot Executed SELL for {pair}")
 
             latest_state["signals"] = signals
+            latest_state["metrics"] = metrics
 
             # Update portfolio after potential trades
             latest_state["portfolio"] = engine.get_portfolio_value(current_prices)
@@ -156,6 +179,40 @@ def reset_bot() -> Dict[str, str]:
     engine = PaperTradingEngine(initial_balance=100.0)
     logger.info("Trading engine reset to initial state.")
     return {"status": "success", "message": "Bot reset successfully"}
+
+@app.post("/api/params")
+async def update_params(request: Request):
+    """Update algorithm parameters."""
+    params = await request.json()
+    algo.update_params(params)
+    # Update global state to broadcast back to UI
+    latest_state["algo_params"] = {
+        "rsi_period": algo.rsi_period,
+        "macd_fast": algo.macd_fast,
+        "macd_slow": algo.macd_slow,
+        "macd_signal": algo.macd_signal,
+        "bb_period": algo.bb_period,
+        "bb_std": algo.bb_std
+    }
+    logger.info(f"Updated Algo Params: {latest_state['algo_params']}")
+    return {"status": "success", "message": "Parameters updated"}
+
+@app.get("/api/historical/{pair}")
+def get_historical_data(pair: str, limit: int = 200):
+    """Get raw historical data for custom charting."""
+    df = gateio.get_candlesticks(pair, interval="1m", limit=limit)
+    if df.empty:
+        return []
+
+    # Calculate indicators
+    df = algo.add_indicators(df)
+
+    # Convert timestamps to string and clean NaNs
+    df['timestamp'] = df['timestamp'].dt.strftime('%H:%M:%S')
+    df = df.fillna(0)
+
+    # Return as list of dicts
+    return df.to_dict(orient="records")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

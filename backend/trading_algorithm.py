@@ -10,6 +10,14 @@ class TradingAlgorithm:
         self.bb_period = bb_period
         self.bb_std = bb_std
 
+    def update_params(self, params: dict):
+        if 'rsi_period' in params: self.rsi_period = int(params['rsi_period'])
+        if 'macd_fast' in params: self.macd_fast = int(params['macd_fast'])
+        if 'macd_slow' in params: self.macd_slow = int(params['macd_slow'])
+        if 'macd_signal' in params: self.macd_signal = int(params['macd_signal'])
+        if 'bb_period' in params: self.bb_period = int(params['bb_period'])
+        if 'bb_std' in params: self.bb_std = float(params['bb_std'])
+
     def add_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Adds RSI, MACD, and Bollinger Bands to the DataFrame."""
         if df.empty or len(df) < max(self.macd_slow, self.rsi_period, self.bb_period):

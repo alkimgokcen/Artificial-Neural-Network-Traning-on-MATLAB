@@ -49,20 +49,38 @@
 </head>
 <body>
 
-    <div class="header-area shadow">
-        <div class="container d-flex justify-content-between align-items-center">
-            <div>
-                <h2><i class="fa-brands fa-bitcoin text-warning"></i> Auto Crypto Bot (Gate.io)</h2>
-                <p class="mb-0 opacity-75">Live Paper Trading Dashboard | Strategy: RSI + MACD + Bollinger Bands</p>
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="header-area shadow pb-0">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h2><i class="fa-brands fa-bitcoin text-warning"></i> Auto Crypto Bot (Gate.io)</h2>
+                    <p class="mb-0 opacity-75">Live Paper Trading Dashboard | Strategy: RSI + MACD + Bollinger Bands</p>
+                </div>
+                <div class="text-end">
+                    <span id="connection-status" class="badge bg-secondary mb-2"><i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...</span><br>
+                    <button id="reset-btn" class="btn btn-sm btn-outline-light"><i class="fa-solid fa-rotate-right"></i> Reset to $100</button>
+                </div>
             </div>
-            <div>
-                <span id="connection-status" class="badge bg-secondary mb-2"><i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...</span><br>
-                <button id="reset-btn" class="btn btn-sm btn-outline-light"><i class="fa-solid fa-rotate-right"></i> Reset to $100</button>
-            </div>
+            <!-- Tabs Navigation -->
+            <ul class="nav nav-tabs border-0" id="myTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active fw-bold border-0 text-white bg-transparent" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab" style="border-radius: 10px 10px 0 0; background: rgba(255,255,255,0.1) !important;">Dashboard</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold border-0 text-white bg-transparent opacity-75" id="algo-tab" data-bs-toggle="tab" data-bs-target="#algo" type="button" role="tab">Algorithm Details</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold border-0 text-white bg-transparent opacity-75" id="charts-tab" data-bs-toggle="tab" data-bs-target="#charts" type="button" role="tab">Custom Charts</button>
+                </li>
+            </ul>
         </div>
     </div>
 
-    <div class="container">
+    <div class="container tab-content mt-4" id="myTabContent">
+        <!-- TAB 1: Dashboard -->
+        <div class="tab-pane fade show active" id="dashboard" role="tabpanel" tabindex="0">
         <!-- Main Stats Row -->
         <div class="row">
             <div class="col-md-4">
@@ -90,13 +108,13 @@
             </div>
         </div>
 
-        <!-- Prices and Signals -->
+        <!-- Prices and Signals & Metrics & Config -->
         <div class="row mt-2">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-bolt text-warning"></i> Live Market & Signals</div>
+            <div class="col-md-8">
+                <div class="card h-100">
+                    <div class="card-header"><i class="fa-solid fa-bolt text-warning"></i> Live Market & Algorithm Dataflow</div>
                     <div class="card-body">
-                        <div class="row text-center" id="market-data">
+                        <div class="row text-center mb-4" id="market-data">
                             <!-- Populated by JS -->
                             <div class="col-md-4">
                                 <h5>BTC/USDT</h5>
@@ -114,6 +132,74 @@
                                 <div>Signal: <span id="signal-sol" class="badge badge-hold">HOLD</span></div>
                             </div>
                         </div>
+                        <hr>
+                        <!-- Live Metrics Table -->
+                        <h6 class="text-muted mb-3"><i class="fa-solid fa-microchip"></i> Internal Algorithm Metrics (1m Candle)</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm text-center" style="font-size: 0.85rem;" id="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Asset</th>
+                                        <th>RSI (Oversold<30, Overbought>70)</th>
+                                        <th>MACD / Signal</th>
+                                        <th>BB Lower / Upper</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr id="metric-btc"><td>BTC</td><td>--</td><td>-- / --</td><td>-- / --</td></tr>
+                                    <tr id="metric-eth"><td>ETH</td><td>--</td><td>-- / --</td><td>-- / --</td></tr>
+                                    <tr id="metric-sol"><td>SOL</td><td>--</td><td>-- / --</td><td>-- / --</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Parameters Configuration -->
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="fa-solid fa-sliders text-secondary"></i> Algorithm Settings</span>
+                        <div class="form-check form-switch m-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="manual-param-switch">
+                            <label class="form-check-label" style="font-size: 0.8rem;">Manual</label>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form id="param-form">
+                            <div class="mb-2">
+                                <label class="form-label small">RSI Period</label>
+                                <input type="number" class="form-control form-control-sm param-input" id="inp-rsi" name="rsi_period" disabled>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-4">
+                                    <label class="form-label small">MACD Fast</label>
+                                    <input type="number" class="form-control form-control-sm param-input" id="inp-macd-fast" name="macd_fast" disabled>
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small">MACD Slow</label>
+                                    <input type="number" class="form-control form-control-sm param-input" id="inp-macd-slow" name="macd_slow" disabled>
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small">Signal</label>
+                                    <input type="number" class="form-control form-control-sm param-input" id="inp-macd-signal" name="macd_signal" disabled>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <label class="form-label small">BB Period</label>
+                                    <input type="number" class="form-control form-control-sm param-input" id="inp-bb-period" name="bb_period" disabled>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">BB Std Dev</label>
+                                    <input type="number" step="0.1" class="form-control form-control-sm param-input" id="inp-bb-std" name="bb_std" disabled>
+                                </div>
+                            </div>
+                            <div class="d-grid">
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-save-params" disabled>Apply Settings</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -177,6 +263,108 @@
                 </div>
             </div>
         </div>
+        </div> <!-- End Dashboard Tab -->
+
+        <!-- TAB 2: Algorithm Explanation -->
+        <div class="tab-pane fade" id="algo" role="tabpanel" tabindex="0">
+            <div class="card">
+                <div class="card-header"><i class="fa-solid fa-graduation-cap text-success"></i> Strategy & Math Details</div>
+                <div class="card-body">
+                    <p class="lead">The bot employs a multi-indicator confirmation strategy. A <strong>BUY</strong> or <strong>SELL</strong> signal is only triggered when at least <strong>2 out of the 3</strong> indicators align.</p>
+                    <hr>
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <h5>1. Relative Strength Index (RSI)</h5>
+                            <p>RSI is a momentum oscillator that measures the speed and change of price movements. The bot uses RSI to identify overbought or oversold conditions.</p>
+                            <ul>
+                                <li><strong>Math:</strong> RSI = 100 - [100 / (1 + (Avg Gain / Avg Loss))]</li>
+                                <li><strong>Buy Condition:</strong> RSI < 40 (Approaching Oversold)</li>
+                                <li><strong>Sell Condition:</strong> RSI > 60 (Approaching Overbought)</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h5>2. MACD</h5>
+                            <p>Moving Average Convergence Divergence measures the relationship between two moving averages (Fast and Slow) of a price.</p>
+                            <ul>
+                                <li><strong>Math:</strong> MACD Line = EMA(Fast) - EMA(Slow)<br>Signal Line = EMA(MACD Line)</li>
+                                <li><strong>Buy Condition:</strong> MACD crosses <em>above</em> the Signal Line.</li>
+                                <li><strong>Sell Condition:</strong> MACD crosses <em>below</em> the Signal Line.</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h5>3. Bollinger Bands</h5>
+                            <p>A volatility indicator consisting of a moving average (Middle Band) and upper/lower bands defined by standard deviations.</p>
+                            <ul>
+                                <li><strong>Math:</strong> Middle = SMA(Period)<br>Upper = Middle + (StdDev * Period)<br>Lower = Middle - (StdDev * Period)</li>
+                                <li><strong>Buy Condition:</strong> Price touches or falls below Lower Band.</li>
+                                <li><strong>Sell Condition:</strong> Price touches or rises above Upper Band.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Custom Graphs -->
+        <div class="tab-pane fade" id="charts" role="tabpanel" tabindex="0">
+            <div class="card">
+                <div class="card-header bg-light"><i class="fa-solid fa-chart-line text-primary"></i> Interactive Custom Charts</div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label small">Asset Pair</label>
+                            <select id="chart-asset" class="form-select form-select-sm">
+                                <option value="BTC_USDT">BTC/USDT</option>
+                                <option value="ETH_USDT">ETH/USDT</option>
+                                <option value="SOL_USDT">SOL/USDT</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">X-Axis</label>
+                            <select id="chart-x" class="form-select form-select-sm">
+                                <option value="timestamp">Time (1m Interval)</option>
+                                <option value="volume">Volume (USDT)</option>
+                                <option value="close">Closing Price</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Y-Axis</label>
+                            <select id="chart-y" class="form-select form-select-sm">
+                                <option value="close">Closing Price</option>
+                                <option value="volume">Volume (USDT)</option>
+                                <option value="rsi">RSI</option>
+                                <option value="macd">MACD</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-sm btn-outline-primary w-100" id="btn-draw-chart">Draw Graph</button>
+                        </div>
+                    </div>
+                    <div style="height: 400px; width: 100%;">
+                        <canvas id="customGraphCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- End Tab Content -->
+
+    <!-- Modal for Parameter Confirmation -->
+    <div class="modal fade" id="confirmParamsModal" tabindex="-1" aria-labelledby="confirmParamsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-danger" id="confirmParamsModalLabel"><i class="fa-solid fa-triangle-exclamation"></i> Are you sure?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Changing the trading algorithm parameters manually can result in unpredictable behavior and loss of simulated funds. Are you absolutely sure you want to apply these new parameters?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-save-btn">Yes, apply changes</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Script to handle WebSocket and UI updates -->
@@ -190,6 +378,8 @@
 
         let ws;
         let allocChart;
+        let customGraph;
+        let confirmModal;
 
         // Initialize Chart
         function initChart() {
@@ -260,6 +450,34 @@
 
                 document.getElementById('signal-sol').className = `badge ${getBadgeClass(solSig)}`;
                 document.getElementById('signal-sol').innerText = solSig;
+            }
+
+            // Update Metrics Table
+            if(data.metrics) {
+                for (const asset of ['BTC', 'ETH', 'SOL']) {
+                    const m = data.metrics[`${asset}_USDT`];
+                    if (m) {
+                        const rsiColor = m.rsi < 30 ? 'text-success' : (m.rsi > 70 ? 'text-danger' : '');
+                        const rsiWeight = m.rsi < 30 || m.rsi > 70 ? 'fw-bold' : '';
+
+                        document.getElementById(`metric-${asset.toLowerCase()}`).innerHTML = `
+                            <td><strong>${asset}</strong></td>
+                            <td class="${rsiColor} ${rsiWeight}">${m.rsi.toFixed(2)}</td>
+                            <td>${m.macd.toFixed(2)} / ${m.macd_signal.toFixed(2)}</td>
+                            <td>$${m.bb_low.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})} / $${m.bb_high.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                        `;
+                    }
+                }
+            }
+
+            // Update Algo Params (if not currently manually editing)
+            if(data.algo_params && !document.getElementById('manual-param-switch').checked) {
+                document.getElementById('inp-rsi').value = data.algo_params.rsi_period;
+                document.getElementById('inp-macd-fast').value = data.algo_params.macd_fast;
+                document.getElementById('inp-macd-slow').value = data.algo_params.macd_slow;
+                document.getElementById('inp-macd-signal').value = data.algo_params.macd_signal;
+                document.getElementById('inp-bb-period').value = data.algo_params.bb_period;
+                document.getElementById('inp-bb-std').value = data.algo_params.bb_std;
             }
 
             // 3. Open Positions
@@ -360,10 +578,122 @@
             };
         }
 
+        // Draw Custom Graph
+        async function drawCustomGraph() {
+            const pair = document.getElementById('chart-asset').value;
+            const xField = document.getElementById('chart-x').value;
+            const yField = document.getElementById('chart-y').value;
+
+            const btn = document.getElementById('btn-draw-chart');
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/historical/${pair}?limit=100`);
+                const data = await res.json();
+
+                const labels = data.map(d => d[xField]);
+                const values = data.map(d => d[yField]);
+
+                if(customGraph) {
+                    customGraph.destroy();
+                }
+
+                const ctx = document.getElementById('customGraphCanvas').getContext('2d');
+                customGraph = new Chart(ctx, {
+                    type: xField === 'timestamp' ? 'line' : 'scatter',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${pair}: ${yField.toUpperCase()} vs ${xField.toUpperCase()}`,
+                            data: xField === 'timestamp' ? values : data.map(d => ({x: d[xField], y: d[yField]})),
+                            borderColor: '#14f195',
+                            backgroundColor: 'rgba(20, 241, 149, 0.2)',
+                            borderWidth: 2,
+                            pointRadius: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: xField === 'timestamp' ? 'category' : 'linear',
+                                title: { display: true, text: xField.toUpperCase() }
+                            },
+                            y: {
+                                title: { display: true, text: yField.toUpperCase() }
+                            }
+                        }
+                    }
+                });
+            } catch(e) {
+                console.error(e);
+                alert("Failed to load historical data.");
+            } finally {
+                btn.innerHTML = origHtml;
+                btn.disabled = false;
+            }
+        }
+
         // Initialize application
         document.addEventListener('DOMContentLoaded', () => {
             initChart();
             connectWebSocket();
+            confirmModal = new bootstrap.Modal(document.getElementById('confirmParamsModal'));
+
+            // Parameter Switch Handler
+            document.getElementById('manual-param-switch').addEventListener('change', (e) => {
+                const isManual = e.target.checked;
+                document.querySelectorAll('.param-input').forEach(el => el.disabled = !isManual);
+                document.getElementById('btn-save-params').disabled = !isManual;
+            });
+
+            // Show Confirmation Modal on Save
+            document.getElementById('btn-save-params').addEventListener('click', () => {
+                confirmModal.show();
+            });
+
+            // Confirm Save Handler
+            document.getElementById('confirm-save-btn').addEventListener('click', async () => {
+                confirmModal.hide();
+                const payload = {
+                    rsi_period: document.getElementById('inp-rsi').value,
+                    macd_fast: document.getElementById('inp-macd-fast').value,
+                    macd_slow: document.getElementById('inp-macd-slow').value,
+                    macd_signal: document.getElementById('inp-macd-signal').value,
+                    bb_period: document.getElementById('inp-bb-period').value,
+                    bb_std: document.getElementById('inp-bb-std').value
+                };
+
+                const btn = document.getElementById('btn-save-params');
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+
+                try {
+                    await fetch(`${API_BASE}/api/params`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    // Turn off manual mode after save
+                    document.getElementById('manual-param-switch').checked = false;
+                    document.querySelectorAll('.param-input').forEach(el => el.disabled = true);
+                    btn.disabled = true;
+
+                } catch(e) {
+                    alert("Failed to update parameters");
+                } finally {
+                    btn.innerHTML = 'Apply Settings';
+                }
+            });
+
+            // Custom Graph Draw Button
+            document.getElementById('btn-draw-chart').addEventListener('click', drawCustomGraph);
+
+            // Draw initial chart
+            drawCustomGraph();
 
             // Reset Button Handler
             document.getElementById('reset-btn').addEventListener('click', async () => {
