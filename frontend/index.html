@@ -182,7 +182,12 @@
     <!-- Script to handle WebSocket and UI updates -->
     <script>
         const API_BASE = 'http://127.0.0.1:8000';
-        const WS_URL = 'ws://127.0.0.1:8000/ws';
+
+        // Use the current hostname, defaulting to localhost for WS connections
+        // In case 'localhost' behaves differently than 127.0.0.1 on some networks
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const WS_URL = `${wsProtocol}//127.0.0.1:8000/ws`;
+
         let ws;
         let allocChart;
 
