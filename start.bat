@@ -50,7 +50,7 @@ echo ================================================
 
 :: Wait 3 seconds for servers to start, then open the browser
 timeout /t 3 /nobreak >nul
-start http://localhost:3000
+start http://localhost:3000/index.html?v=%RANDOM%
 
 echo.
 echo Press any key to stop both servers...
