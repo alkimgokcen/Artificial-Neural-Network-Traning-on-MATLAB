@@ -34,8 +34,15 @@ else
 fi
 
 # Install dependencies with trusted host flags to bypass SSL issues
+echo "Upgrading pip..."
+pip install --upgrade pip \
+    --trusted-host pypi.org \
+    --trusted-host pypi.python.org \
+    --trusted-host files.pythonhosted.org -q
+
 echo "Installing dependencies..."
 pip install -r requirements.txt \
+    --prefer-binary \
     --trusted-host pypi.org \
     --trusted-host pypi.python.org \
     --trusted-host files.pythonhosted.org -q

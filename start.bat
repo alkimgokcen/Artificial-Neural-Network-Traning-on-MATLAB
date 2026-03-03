@@ -25,8 +25,11 @@ IF EXIST "venv\Scripts\activate.bat" (
 )
 
 :: Install dependencies with trusted host flags to bypass SSL issues
+echo Upgrading pip...
+python -m pip install --upgrade pip --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -q
+
 echo Installing dependencies...
-python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -q
+python -m pip install -r requirements.txt --prefer-binary --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -q
 
 :: Step 2: Start the FastAPI Backend Server
 echo.
