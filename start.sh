@@ -47,13 +47,13 @@ pip install -r requirements.txt \
     --trusted-host pypi.python.org \
     --trusted-host files.pythonhosted.org -q
 
-# Step 2: Start the FastAPI Backend Server
+# Step 2: Start the Backend Server
 echo -e "\n[2/3] Starting Backend Server on port 8000..."
 # Kill any existing process on port 8000 to prevent errors
 kill $(lsof -t -i :8000) 2>/dev/null || true
 
-# Run uvicorn in the background and log output
-nohup python -m uvicorn main:app --reload > server.log 2>&1 &
+# Run standard python main script in the background and log output
+nohup python main.py > server.log 2>&1 &
 BACKEND_PID=$!
 echo "Backend started successfully (PID: $BACKEND_PID)"
 

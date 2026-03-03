@@ -1,10 +1,10 @@
-from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
-from fastapi.middleware.cors import CORSMiddleware
-import asyncio
 import time
 import json
 import logging
+import threading
 from typing import Dict, Any
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import urllib.parse
 
 from gateio_client import GateIOClient
 from trading_algorithm import TradingAlgorithm
@@ -13,17 +13,6 @@ from paper_engine import PaperTradingEngine
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("TradingBot")
-
-app = FastAPI(title="Crypto Trading Bot", description="Automated paper trading bot for BTC, ETH, SOL on Gate.io")
-
-# Allow CORS for frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Global State
 TRADE_PAIRS = ["BTC_USDT", "ETH_USDT", "SOL_USDT"]
@@ -37,6 +26,7 @@ latest_state = {
     "signals": {},
     "metrics": {},
     "portfolio": {},
+    "history": [],
     "isRunning": False,
     "algo_params": {
         "rsi_period": algo.rsi_period,
@@ -52,36 +42,15 @@ latest_state = {
     }
 }
 
-# WebSocket connection manager
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except Exception as e:
-                logger.error(f"WebSocket send error: {e}")
-
-manager = ConnectionManager()
-
-async def run_bot_loop():
-    """Background task that runs the trading bot continuously."""
+def run_bot_loop():
+    """Background thread that runs the trading bot continuously."""
     logger.info("Starting trading bot loop...")
     latest_state["isRunning"] = True
 
     while latest_state["isRunning"]:
         try:
-            # 1. Fetch Latest Prices
-            tickers = await gateio.get_multiple_tickers(TRADE_PAIRS)
+            # 1. Fetch Latest Prices (Synchronous)
+            tickers = gateio.get_multiple_tickers(TRADE_PAIRS)
             current_prices = {}
             for pair, data in tickers.items():
                 if data and 'last' in data:
@@ -116,29 +85,27 @@ async def run_bot_loop():
                     }
 
                 # 4. Execute Trades
-                current_price = float(tickers[pair]['last'])
-                asset = pair.split('_')[0]
+                if pair in tickers and 'last' in tickers[pair]:
+                    current_price = float(tickers[pair]['last'])
 
-                # Simple portfolio sizing logic: allocate fixed margin per trade
-                margin_amount_usd = 25.0
+                    # Simple portfolio sizing logic: allocate fixed margin per trade
+                    margin_amount_usd = 25.0
 
-                # Close opposite positions or identical signals handled by engine logic loosely
-                # If we get a SHORT signal but we are LONG, close the LONG first.
-                current_position = engine.positions.get(pair)
+                    current_position = engine.positions.get(pair)
 
-                if signal == 'LONG':
-                    if current_position and current_position.position_type == 'SHORT':
-                        engine.close_position(pair, current_price, reason="SIGNAL_REVERSAL")
+                    if signal == 'LONG':
+                        if current_position and current_position.position_type == 'SHORT':
+                            engine.close_position(pair, current_price, reason="SIGNAL_REVERSAL")
 
-                    if not engine.positions.get(pair): # Open if no position
-                        engine.open_position(pair, 'LONG', current_price, margin_amount=margin_amount_usd, leverage=algo.leverage)
+                        if not engine.positions.get(pair):
+                            engine.open_position(pair, 'LONG', current_price, margin_amount=margin_amount_usd, leverage=algo.leverage)
 
-                elif signal == 'SHORT':
-                    if current_position and current_position.position_type == 'LONG':
-                        engine.close_position(pair, current_price, reason="SIGNAL_REVERSAL")
+                    elif signal == 'SHORT':
+                        if current_position and current_position.position_type == 'LONG':
+                            engine.close_position(pair, current_price, reason="SIGNAL_REVERSAL")
 
-                    if not engine.positions.get(pair): # Open if no position
-                        engine.open_position(pair, 'SHORT', current_price, margin_amount=margin_amount_usd, leverage=algo.leverage)
+                        if not engine.positions.get(pair):
+                            engine.open_position(pair, 'SHORT', current_price, margin_amount=margin_amount_usd, leverage=algo.leverage)
 
             latest_state["signals"] = signals
             latest_state["metrics"] = metrics
@@ -147,99 +114,107 @@ async def run_bot_loop():
             latest_state["portfolio"] = engine.get_portfolio_value(current_prices)
             latest_state["history"] = engine.get_trade_history()
 
-            # Broadcast update via WebSocket
-            await manager.broadcast(json.dumps(latest_state))
-
             # Sleep before next cycle (10 seconds for demo)
-            await asyncio.sleep(10)
+            time.sleep(10)
 
-        except asyncio.CancelledError:
-            logger.info("Bot loop cancelled.")
-            break
         except Exception as e:
             logger.error(f"Error in bot loop: {e}")
-            await asyncio.sleep(5)  # Backoff on error
+            time.sleep(5)  # Backoff on error
 
-@app.on_event("startup")
-async def startup_event():
-    # Start bot loop in background
-    asyncio.create_task(run_bot_loop())
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    latest_state["isRunning"] = False
+class SimpleAPIHandler(BaseHTTPRequestHandler):
+    def _set_headers(self, status=200):
+        self.send_response(status)
+        self.send_header('Content-type', 'application/json')
+        # Allow CORS
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
 
-# REST API Endpoints
+    def do_OPTIONS(self):
+        self._set_headers()
 
-@app.get("/api/state")
-def get_state() -> Dict[str, Any]:
-    """Get the current state of the trading bot."""
-    return latest_state
+    def do_GET(self):
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
 
-@app.get("/api/history")
-def get_history() -> list:
-    """Get full trade history."""
-    return engine.get_trade_history()
+        if path == '/api/state':
+            self._set_headers()
+            self.wfile.write(json.dumps(latest_state).encode('utf-8'))
 
-@app.post("/api/reset")
-def reset_bot() -> Dict[str, str]:
-    """Reset the paper trading engine to initial state."""
-    global engine
-    engine = PaperTradingEngine(initial_balance=100.0)
-    logger.info("Trading engine reset to initial state.")
-    return {"status": "success", "message": "Bot reset successfully"}
+        elif path == '/api/history':
+            self._set_headers()
+            self.wfile.write(json.dumps(engine.get_trade_history()).encode('utf-8'))
 
-@app.post("/api/params")
-async def update_params(request: Request):
-    """Update algorithm parameters."""
-    params = await request.json()
-    algo.update_params(params)
-    # Update global state to broadcast back to UI
-    latest_state["algo_params"] = {
-        "rsi_period": algo.rsi_period,
-        "macd_fast": algo.macd_fast,
-        "macd_slow": algo.macd_slow,
-        "macd_signal": algo.macd_signal,
-        "bb_period": algo.bb_period,
-        "bb_std": algo.bb_std,
-        "interval": algo.interval,
-        "leverage": algo.leverage,
-        "take_profit": algo.take_profit,
-        "stop_loss": algo.stop_loss
-    }
-    logger.info(f"Updated Algo Params: {latest_state['algo_params']}")
-    return {"status": "success", "message": "Parameters updated"}
+        elif path.startswith('/api/historical/'):
+            pair = path.split('/')[-1]
+            query = dict(urllib.parse.parse_qsl(parsed_path.query))
+            limit = int(query.get('limit', 100))
 
-@app.get("/api/historical/{pair}")
-def get_historical_data(pair: str, interval: str = "1m", limit: int = 200):
-    """Get raw historical data for custom charting."""
-    import datetime
-    # Use the globally configured interval if none explicitly passed, or let user request specific
-    use_interval = interval if interval else algo.interval
-    data = gateio.get_candlesticks(pair, interval=use_interval, limit=limit)
-    if not data:
-        return []
+            import datetime
+            data = gateio.get_candlesticks(pair, interval=algo.interval, limit=limit)
+            if data:
+                data = algo.add_indicators(data)
+                for d in data:
+                    d['timestamp'] = datetime.datetime.fromtimestamp(d['timestamp']).strftime('%H:%M:%S')
+                    for k, v in d.items():
+                        if v is None:
+                            d[k] = 0.0
+            else:
+                data = []
 
-    # Calculate indicators
-    data = algo.add_indicators(data)
+            self._set_headers()
+            self.wfile.write(json.dumps(data).encode('utf-8'))
+        else:
+            self._set_headers(404)
+            self.wfile.write(b'{"error": "Not Found"}')
 
-    # Convert timestamps to string and clean NaNs
-    for d in data:
-        d['timestamp'] = datetime.datetime.fromtimestamp(d['timestamp']).strftime('%H:%M:%S')
-        for k, v in d.items():
-            if v is None:
-                d[k] = 0.0
+    def do_POST(self):
+        if self.path == '/api/reset':
+            global engine
+            engine = PaperTradingEngine(initial_balance=100.0)
+            logger.info("Trading engine reset to initial state.")
+            self._set_headers()
+            self.wfile.write(b'{"status": "success", "message": "Bot reset successfully"}')
 
-    return data
+        elif self.path == '/api/params':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            params = json.loads(post_data)
+            algo.update_params(params)
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        # Send initial state
-        await websocket.send_text(json.dumps(latest_state))
-        while True:
-            # Keep connection alive, wait for client disconnect
-            data = await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+            # Update global state
+            latest_state["algo_params"] = {
+                "rsi_period": algo.rsi_period,
+                "macd_fast": algo.macd_fast,
+                "macd_slow": algo.macd_slow,
+                "macd_signal": algo.macd_signal,
+                "bb_period": algo.bb_period,
+                "bb_std": algo.bb_std,
+                "interval": algo.interval,
+                "leverage": algo.leverage,
+                "take_profit": algo.take_profit,
+                "stop_loss": algo.stop_loss
+            }
+            logger.info(f"Updated Algo Params: {latest_state['algo_params']}")
+            self._set_headers()
+            self.wfile.write(b'{"status": "success", "message": "Parameters updated"}')
+        else:
+            self._set_headers(404)
+            self.wfile.write(b'{"error": "Not Found"}')
+
+
+def start_server(port=8000):
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, SimpleAPIHandler)
+    logger.info(f"Starting API Server on port {port}...")
+    httpd.serve_forever()
+
+if __name__ == "__main__":
+    # Start bot loop in background thread
+    bot_thread = threading.Thread(target=run_bot_loop, daemon=True)
+    bot_thread.start()
+
+    # Start HTTP server
+    start_server(8000)

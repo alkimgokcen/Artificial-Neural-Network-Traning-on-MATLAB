@@ -415,16 +415,11 @@
         </div>
     </div>
 
-    <!-- Script to handle WebSocket and UI updates -->
+    <!-- Script to handle API polling and UI updates -->
     <script>
         const API_BASE = 'http://127.0.0.1:8000';
 
-        // Use the current hostname, defaulting to localhost for WS connections
-        // In case 'localhost' behaves differently than 127.0.0.1 on some networks
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const WS_URL = `${wsProtocol}//127.0.0.1:8000/ws`;
-
-        let ws;
+        let pollInterval;
         let allocChart;
         let customGraph;
         let confirmModal;
@@ -604,35 +599,28 @@
             }
         }
 
-        function connectWebSocket() {
+        async function fetchState() {
             const statusBadge = document.getElementById('connection-status');
-
-            ws = new WebSocket(WS_URL);
-
-            ws.onopen = () => {
-                statusBadge.className = 'badge bg-success mb-2';
-                statusBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Connected';
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
+            try {
+                const response = await fetch(`${API_BASE}/api/state`);
+                if(response.ok) {
+                    const data = await response.json();
                     updateUI(data);
-                } catch(e) {
-                    console.error("Error parsing WS data", e);
+                    statusBadge.className = 'badge bg-success mb-2';
+                    statusBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Connected';
+                } else {
+                    throw new Error("API returned non-200");
                 }
-            };
-
-            ws.onclose = () => {
+            } catch(e) {
+                console.error("Error fetching state data", e);
                 statusBadge.className = 'badge bg-danger mb-2';
                 statusBadge.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Disconnected';
-                // Attempt to reconnect after 3 seconds
-                setTimeout(connectWebSocket, 3000);
-            };
+            }
+        }
 
-            ws.onerror = (err) => {
-                console.error("WebSocket error:", err);
-            };
+        function startPolling() {
+            fetchState(); // fetch immediately
+            pollInterval = setInterval(fetchState, 5000); // poll every 5 seconds
         }
 
         // Draw Custom Graph
@@ -697,7 +685,7 @@
         // Initialize application
         document.addEventListener('DOMContentLoaded', () => {
             initChart();
-            connectWebSocket();
+            startPolling();
             confirmModal = new bootstrap.Modal(document.getElementById('confirmParamsModal'));
 
             // Parameter Switch Handler

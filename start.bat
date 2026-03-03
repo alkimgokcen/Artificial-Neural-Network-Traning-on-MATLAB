@@ -31,12 +31,12 @@ python -m pip install --upgrade pip --trusted-host pypi.org --trusted-host pypi.
 echo Installing dependencies...
 python -m pip install -r requirements.txt --prefer-binary --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -q
 
-:: Step 2: Start the FastAPI Backend Server
+:: Step 2: Start the Backend Server
 echo.
 echo [2/3] Starting Backend Server on port 8000...
 
-:: Run uvicorn in the background using start
-start "Trading Bot Backend" cmd /c "python -m uvicorn main:app --reload"
+:: Run python standard library script in the background
+start "Trading Bot Backend" cmd /c "python main.py"
 
 :: Step 3: Start the Frontend UI Server
 echo.
