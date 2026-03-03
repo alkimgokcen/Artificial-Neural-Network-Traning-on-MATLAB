@@ -1,5 +1,4 @@
 import requests
-import pandas as pd
 import asyncio
 import aiohttp
 from typing import List, Dict, Optional
@@ -20,10 +19,11 @@ class GateIOClient:
                 return data[0]
         return None
 
-    def get_candlesticks(self, currency_pair: str, interval: str = "1m", limit: int = 100) -> pd.DataFrame:
+    def get_candlesticks(self, currency_pair: str, interval: str = "1m", limit: int = 100) -> List[Dict]:
         """
-        Fetch historical candlestick data and return it as a pandas DataFrame.
-        Gate.io returns: [timestamp, volume, close, high, low, open, ...]
+        Fetch historical candlestick data and return it as a list of dicts.
+        Gate.io returns list of lists:
+        Index format: 0: unix_timestamp, 1: volume (quote), 2: close, 3: high, 4: low, 5: open, 6: volume (base), 7: window flag
         """
         url = f"{self.spot_url}/candlesticks"
         params = {
@@ -34,19 +34,25 @@ class GateIOClient:
         response = requests.get(url, params=params)
         if response.status_code == 200:
             data = response.json()
-            # Gate.io returns list of lists.
-            # Index format: 0: unix_timestamp, 1: volume (quote), 2: close, 3: high, 4: low, 5: open, 6: volume (base), 7: window flag
-            df = pd.DataFrame(data, columns=["timestamp", "quote_volume", "close", "high", "low", "open", "base_volume", "window_flag"])
+            # Sort chronologically (oldest first)
+            data.sort(key=lambda x: int(x[0]))
 
-            # Convert types
-            for col in ["quote_volume", "close", "high", "low", "open", "base_volume"]:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-
-            df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit='s')
-            df.sort_values("timestamp", inplace=True)
-            df.reset_index(drop=True, inplace=True)
-            return df
-        return pd.DataFrame()
+            records = []
+            for row in data:
+                try:
+                    records.append({
+                        "timestamp": int(row[0]),
+                        "quote_volume": float(row[1]),
+                        "close": float(row[2]),
+                        "high": float(row[3]),
+                        "low": float(row[4]),
+                        "open": float(row[5]),
+                        "base_volume": float(row[6])
+                    })
+                except (ValueError, IndexError):
+                    continue
+            return records
+        return []
 
     async def get_multiple_tickers(self, currency_pairs: List[str]) -> Dict[str, Dict]:
         """Fetch multiple tickers concurrently."""

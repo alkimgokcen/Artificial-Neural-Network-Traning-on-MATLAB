@@ -1,5 +1,4 @@
-import pandas as pd
-import ta
+from typing import List, Dict
 
 class TradingAlgorithm:
     def __init__(self, rsi_period=14, macd_fast=12, macd_slow=26, macd_signal=9, bb_period=20, bb_std=2, interval="1m", leverage=1.0, take_profit=0.05, stop_loss=0.02):
@@ -26,52 +25,135 @@ class TradingAlgorithm:
         if 'take_profit' in params: self.take_profit = float(params['take_profit'])
         if 'stop_loss' in params: self.stop_loss = float(params['stop_loss'])
 
-    def add_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Adds RSI, MACD, and Bollinger Bands to the DataFrame."""
-        if df.empty or len(df) < max(self.macd_slow, self.rsi_period, self.bb_period):
-            return df
+    def calculate_ema(self, prices: List[float], period: int) -> List[float]:
+        """Calculate Exponential Moving Average."""
+        if not prices: return []
+        multiplier = 2 / (period + 1)
+        ema = [sum(prices[:period]) / period] if len(prices) >= period else [prices[0]]
 
-        # RSI
-        rsi_indicator = ta.momentum.RSIIndicator(close=df['close'], window=self.rsi_period)
-        df['rsi'] = rsi_indicator.rsi()
+        # We need an array of the same length to map it back, pad initial with None
+        result = [None] * (period - 1) + [ema[0]]
+        for price in prices[period:]:
+            new_ema = (price - ema[-1]) * multiplier + ema[-1]
+            ema.append(new_ema)
+            result.append(new_ema)
+        return result
 
-        # MACD
-        macd_indicator = ta.trend.MACD(
-            close=df['close'],
-            window_slow=self.macd_slow,
-            window_fast=self.macd_fast,
-            window_sign=self.macd_signal
-        )
-        df['macd'] = macd_indicator.macd()
-        df['macd_signal'] = macd_indicator.macd_signal()
-        df['macd_diff'] = macd_indicator.macd_diff()
+    def calculate_sma(self, prices: List[float], period: int) -> List[float]:
+        """Calculate Simple Moving Average."""
+        result = [None] * len(prices)
+        for i in range(period - 1, len(prices)):
+            result[i] = sum(prices[i - period + 1 : i + 1]) / period
+        return result
 
-        # Bollinger Bands
-        bb_indicator = ta.volatility.BollingerBands(
-            close=df['close'],
-            window=self.bb_period,
-            window_dev=self.bb_std
-        )
-        df['bb_high'] = bb_indicator.bollinger_hband()
-        df['bb_low'] = bb_indicator.bollinger_lband()
-        df['bb_mid'] = bb_indicator.bollinger_mavg()
+    def calculate_std(self, prices: List[float], period: int) -> List[float]:
+        """Calculate Standard Deviation for a rolling window."""
+        import math
+        result = [None] * len(prices)
+        for i in range(period - 1, len(prices)):
+            window = prices[i - period + 1 : i + 1]
+            mean = sum(window) / period
+            variance = sum((x - mean) ** 2 for x in window) / period
+            result[i] = math.sqrt(variance)
+        return result
 
-        return df
+    def add_indicators(self, data: List[Dict]) -> List[Dict]:
+        """Calculates RSI, MACD, and Bollinger Bands using pure Python math."""
+        if len(data) < max(self.macd_slow, self.rsi_period, self.bb_period):
+            return data
 
-    def evaluate(self, df: pd.DataFrame) -> str:
+        prices = [d['close'] for d in data]
+        n = len(prices)
+
+        # 1. RSI
+        gains = [0.0] * n
+        losses = [0.0] * n
+        for i in range(1, n):
+            change = prices[i] - prices[i-1]
+            if change > 0: gains[i] = change
+            else: losses[i] = abs(change)
+
+        rsi_values = [None] * n
+        avg_gain = sum(gains[1:self.rsi_period+1]) / self.rsi_period
+        avg_loss = sum(losses[1:self.rsi_period+1]) / self.rsi_period
+
+        if avg_loss == 0:
+            rs = 100
+        else:
+            rs = avg_gain / avg_loss
+
+        rsi_values[self.rsi_period] = 100 - (100 / (1 + rs))
+
+        for i in range(self.rsi_period + 1, n):
+            avg_gain = ((avg_gain * (self.rsi_period - 1)) + gains[i]) / self.rsi_period
+            avg_loss = ((avg_loss * (self.rsi_period - 1)) + losses[i]) / self.rsi_period
+            if avg_loss == 0:
+                rsi_values[i] = 100
+            else:
+                rs = avg_gain / avg_loss
+                rsi_values[i] = 100 - (100 / (1 + rs))
+
+        # 2. MACD
+        ema_fast = self.calculate_ema(prices, self.macd_fast)
+        ema_slow = self.calculate_ema(prices, self.macd_slow)
+        macd_line = [None] * n
+
+        for i in range(n):
+            if ema_fast[i] is not None and ema_slow[i] is not None:
+                macd_line[i] = ema_fast[i] - ema_slow[i]
+
+        # Signal line is EMA of MACD
+        # Find first valid macd value
+        first_valid_macd_idx = next((i for i, v in enumerate(macd_line) if v is not None), -1)
+
+        macd_signal = [None] * n
+        if first_valid_macd_idx != -1 and first_valid_macd_idx + self.macd_signal <= n:
+            valid_macd_subset = macd_line[first_valid_macd_idx:]
+            signal_subset = self.calculate_ema(valid_macd_subset, self.macd_signal)
+            macd_signal[first_valid_macd_idx:] = signal_subset
+
+        macd_diff = [None] * n
+        for i in range(n):
+            if macd_line[i] is not None and macd_signal[i] is not None:
+                macd_diff[i] = macd_line[i] - macd_signal[i]
+
+        # 3. Bollinger Bands
+        sma = self.calculate_sma(prices, self.bb_period)
+        std_dev = self.calculate_std(prices, self.bb_period)
+
+        bb_high = [None] * n
+        bb_low = [None] * n
+
+        for i in range(n):
+            if sma[i] is not None and std_dev[i] is not None:
+                bb_high[i] = sma[i] + (std_dev[i] * self.bb_std)
+                bb_low[i] = sma[i] - (std_dev[i] * self.bb_std)
+
+        # Map back to data objects
+        for i in range(n):
+            data[i]['rsi'] = rsi_values[i]
+            data[i]['macd'] = macd_line[i]
+            data[i]['macd_signal'] = macd_signal[i]
+            data[i]['macd_diff'] = macd_diff[i]
+            data[i]['bb_high'] = bb_high[i]
+            data[i]['bb_low'] = bb_low[i]
+            data[i]['bb_mid'] = sma[i]
+
+        return data
+
+    def evaluate(self, data: List[Dict]) -> str:
         """
-        Evaluates the DataFrame with indicators and returns a signal:
+        Evaluates the data with indicators and returns a signal:
         'BUY', 'SELL', or 'HOLD'.
         """
-        if df.empty or 'rsi' not in df.columns or len(df) < 2:
+        if not data or len(data) < 2:
             return 'HOLD'
 
-        # Get the latest row for decision
-        latest = df.iloc[-1]
-        previous = df.iloc[-2]
+        latest = data[-1]
+        previous = data[-2]
 
-        # Don't trade if indicators are still NaN
-        if pd.isna(latest['rsi']) or pd.isna(latest['macd']) or pd.isna(latest['bb_high']):
+        # Don't trade if indicators are still missing
+        if latest.get('rsi') is None or latest.get('macd') is None or latest.get('bb_high') is None:
             return 'HOLD'
 
         # LONG Signal Conditions (Bullish)

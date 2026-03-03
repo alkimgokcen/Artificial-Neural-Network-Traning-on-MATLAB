@@ -1,8 +1,5 @@
 fastapi
 uvicorn
 requests
-pandas<2.0.0
-numpy<1.25.0
-ta
 aiohttp
 websockets

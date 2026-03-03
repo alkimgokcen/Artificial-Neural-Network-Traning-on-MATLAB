@@ -5,7 +5,6 @@ import time
 import json
 import logging
 from typing import Dict, Any
-import pandas as pd
 
 from gateio_client import GateIOClient
 from trading_algorithm import TradingAlgorithm
@@ -100,20 +99,20 @@ async def run_bot_loop():
             metrics = {}
             for pair in TRADE_PAIRS:
                 # Need sufficient historical data for MA/RSI/Bollinger Bands
-                df = gateio.get_candlesticks(pair, interval=algo.interval, limit=100)
-                df_with_indicators = algo.add_indicators(df)
-                signal = algo.evaluate(df_with_indicators)
+                data_list = gateio.get_candlesticks(pair, interval=algo.interval, limit=100)
+                data_with_indicators = algo.add_indicators(data_list)
+                signal = algo.evaluate(data_with_indicators)
                 signals[pair] = signal
 
                 # Extract latest metrics for UI
-                if not df_with_indicators.empty and 'rsi' in df_with_indicators.columns:
-                    latest = df_with_indicators.iloc[-1]
+                if data_with_indicators and 'rsi' in data_with_indicators[-1]:
+                    latest = data_with_indicators[-1]
                     metrics[pair] = {
-                        "rsi": float(latest.get('rsi', 0)) if pd.notna(latest.get('rsi')) else 0,
-                        "macd": float(latest.get('macd', 0)) if pd.notna(latest.get('macd')) else 0,
-                        "macd_signal": float(latest.get('macd_signal', 0)) if pd.notna(latest.get('macd_signal')) else 0,
-                        "bb_low": float(latest.get('bb_low', 0)) if pd.notna(latest.get('bb_low')) else 0,
-                        "bb_high": float(latest.get('bb_high', 0)) if pd.notna(latest.get('bb_high')) else 0,
+                        "rsi": float(latest.get('rsi') or 0),
+                        "macd": float(latest.get('macd') or 0),
+                        "macd_signal": float(latest.get('macd_signal') or 0),
+                        "bb_low": float(latest.get('bb_low') or 0),
+                        "bb_high": float(latest.get('bb_high') or 0),
                     }
 
                 # 4. Execute Trades
@@ -214,21 +213,24 @@ async def update_params(request: Request):
 @app.get("/api/historical/{pair}")
 def get_historical_data(pair: str, interval: str = "1m", limit: int = 200):
     """Get raw historical data for custom charting."""
+    import datetime
     # Use the globally configured interval if none explicitly passed, or let user request specific
     use_interval = interval if interval else algo.interval
-    df = gateio.get_candlesticks(pair, interval=use_interval, limit=limit)
-    if df.empty:
+    data = gateio.get_candlesticks(pair, interval=use_interval, limit=limit)
+    if not data:
         return []
 
     # Calculate indicators
-    df = algo.add_indicators(df)
+    data = algo.add_indicators(data)
 
     # Convert timestamps to string and clean NaNs
-    df['timestamp'] = df['timestamp'].dt.strftime('%H:%M:%S')
-    df = df.fillna(0)
+    for d in data:
+        d['timestamp'] = datetime.datetime.fromtimestamp(d['timestamp']).strftime('%H:%M:%S')
+        for k, v in d.items():
+            if v is None:
+                d[k] = 0.0
 
-    # Return as list of dicts
-    return df.to_dict(orient="records")
+    return data
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
