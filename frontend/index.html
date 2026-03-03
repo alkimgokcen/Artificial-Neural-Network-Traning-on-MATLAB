@@ -189,7 +189,7 @@
                                     <input type="number" class="form-control form-control-sm param-input" id="inp-macd-signal" name="macd_signal" disabled>
                                 </div>
                             </div>
-                            <div class="row mb-3">
+                            <div class="row mb-2">
                                 <div class="col-6">
                                     <label class="form-label small">BB Period</label>
                                     <input type="number" class="form-control form-control-sm param-input" id="inp-bb-period" name="bb_period" disabled>
@@ -197,6 +197,33 @@
                                 <div class="col-6">
                                     <label class="form-label small">BB Std Dev</label>
                                     <input type="number" step="0.1" class="form-control form-control-sm param-input" id="inp-bb-std" name="bb_std" disabled>
+                                </div>
+                            </div>
+                            <hr>
+                            <h6 class="text-primary small mb-2"><i class="fa-solid fa-piggy-bank"></i> Margin & Risk Settings</h6>
+                            <div class="row mb-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Interval</label>
+                                    <select class="form-select form-select-sm param-input" id="inp-interval" disabled>
+                                        <option value="1m">1m</option>
+                                        <option value="5m">5m</option>
+                                        <option value="15m">15m</option>
+                                        <option value="1h">1h</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Leverage (x)</label>
+                                    <input type="number" min="1" max="20" step="1" class="form-control form-control-sm param-input" id="inp-leverage" disabled>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <label class="form-label small">Take Profit (%)</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm param-input" id="inp-tp" disabled>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Stop Loss (%)</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm param-input" id="inp-sl" disabled>
                                 </div>
                             </div>
                             <div class="d-grid">
@@ -219,11 +246,15 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th>Asset</th>
-                                        <th>Amount</th>
-                                        <th>Avg Entry</th>
-                                        <th>Current Price</th>
-                                        <th>Value</th>
+                                <th>Type</th>
+                                <th>Lev.</th>
+                                <th>Margin</th>
+                                <th>Size</th>
+                                <th>Entry</th>
+                                <th>Liq. Price</th>
+                                <th>Current</th>
                                         <th>PnL %</th>
+                                <th>PnL ($)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -302,6 +333,20 @@
                                 <li><strong>Buy Condition:</strong> Price touches or falls below Lower Band.</li>
                                 <li><strong>Sell Condition:</strong> Price touches or rises above Upper Band.</li>
                             </ul>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row mt-4">
+                            <div class="col-md-12">
+                                <h4 class="text-primary"><i class="fa-solid fa-piggy-bank"></i> Leveraged Margin Engine Details</h4>
+                                <p>This trading bot does not just trade spot assets; it supports <strong>Leveraged Margin Trading</strong>, amplifying both potential profits and risks.</p>
+                                <ul>
+                                    <li><strong>LONG Position:</strong> The bot believes the asset price will rise. It uses the `Leverage` multiplier to borrow USDT, buys a large amount of the asset, and hopes to sell it later at a higher price.</li>
+                                    <li><strong>SHORT Position:</strong> The bot believes the asset price will fall. It borrows the asset, sells it immediately for USDT, and hopes to buy it back later at a cheaper price to repay the loan.</li>
+                                    <li><strong>Margin & Collateral:</strong> For a trade of $25 with 10x Leverage, the engine only locks $25 of your available cash (Initial Margin). The total trade position size is $250.</li>
+                                    <li><strong>Unrealized PnL:</strong> The profit or loss is calculated on the full $250 size, but is added/subtracted from your $25 margin. This is why leveraged PnL percentages can exceed 100%.</li>
+                                    <li><strong>Liquidation Price:</strong> If the market moves aggressively against the bot, the position will be automatically liquidated when the Margin is 95% depleted to protect the rest of the account balance from going negative.</li>
+                                </ul>
                         </div>
                     </div>
                 </div>
@@ -481,6 +526,10 @@
                 document.getElementById('inp-macd-signal').value = data.algo_params.macd_signal;
                 document.getElementById('inp-bb-period').value = data.algo_params.bb_period;
                 document.getElementById('inp-bb-std').value = data.algo_params.bb_std;
+                document.getElementById('inp-interval').value = data.algo_params.interval || '1m';
+                document.getElementById('inp-leverage').value = data.algo_params.leverage || 1.0;
+                document.getElementById('inp-tp').value = data.algo_params.take_profit || 0.05;
+                document.getElementById('inp-sl').value = data.algo_params.stop_loss || 0.02;
             }
 
             // 3. Open Positions
@@ -496,19 +545,24 @@
                     if(info.amount > 0) {
                         hasPositions = true;
                         const pnlColor = info.pnl_pct >= 0 ? 'text-green' : 'text-red';
+                        const badgeColor = info.type === 'LONG' ? 'bg-success' : 'bg-danger';
                         const tr = document.createElement('tr');
                         tr.innerHTML = `
                             <td><strong>${asset}</strong></td>
+                            <td><span class="badge ${badgeColor}">${info.type}</span></td>
+                            <td>${info.leverage}x</td>
+                            <td>${formatCurrency(info.margin_used)}</td>
                             <td>${formatCrypto(info.amount)}</td>
-                            <td>${formatCurrency(info.avg_entry)}</td>
-                            <td>${formatCurrency(info.price)}</td>
-                            <td>${formatCurrency(info.value)}</td>
+                            <td>${formatCurrency(info.entry_price)}</td>
+                            <td class="text-warning">${formatCurrency(info.liquidation_price)}</td>
+                            <td>${formatCurrency(info.current_price)}</td>
                             <td class="${pnlColor}"><strong>${info.pnl_pct.toFixed(2)}%</strong></td>
+                            <td class="${pnlColor}"><strong>${formatCurrency(info.unrealized_pnl)}</strong></td>
                         `;
                         tbody.appendChild(tr);
 
-                        chartLabels.push(asset);
-                        chartData.push(info.value);
+                        chartLabels.push(`${asset} (${info.type})`);
+                        chartData.push(info.margin_used + info.unrealized_pnl);
                     }
                 }
             }
@@ -667,7 +721,11 @@
                     macd_slow: document.getElementById('inp-macd-slow').value,
                     macd_signal: document.getElementById('inp-macd-signal').value,
                     bb_period: document.getElementById('inp-bb-period').value,
-                    bb_std: document.getElementById('inp-bb-std').value
+                    bb_std: document.getElementById('inp-bb-std').value,
+                    interval: document.getElementById('inp-interval').value,
+                    leverage: document.getElementById('inp-leverage').value,
+                    take_profit: document.getElementById('inp-tp').value,
+                    stop_loss: document.getElementById('inp-sl').value
                 };
 
                 const btn = document.getElementById('btn-save-params');

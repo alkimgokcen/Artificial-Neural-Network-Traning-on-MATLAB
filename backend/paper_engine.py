@@ -1,15 +1,20 @@
 import datetime
 from typing import Dict, List, Optional
 import json
+import logging
+
+logger = logging.getLogger("TradingEngine")
 
 class TradeInfo:
-    def __init__(self, timestamp: float, pair: str, side: str, amount: float, price: float, total: float):
+    def __init__(self, timestamp: float, pair: str, side: str, amount: float, price: float, total: float, leverage: float = 1.0, position_type: str = "SPOT"):
         self.timestamp = timestamp
         self.pair = pair
         self.side = side # 'BUY' or 'SELL'
         self.amount = amount
         self.price = price
-        self.total = total
+        self.total = total # In USDT
+        self.leverage = leverage
+        self.position_type = position_type # "LONG" or "SHORT" or "SPOT"
 
     def to_dict(self):
         return {
@@ -18,141 +23,188 @@ class TradeInfo:
             "side": self.side,
             "amount": self.amount,
             "price": self.price,
-            "total": self.total
+            "total": self.total,
+            "leverage": self.leverage,
+            "position_type": self.position_type
         }
+
+class Position:
+    def __init__(self, pair: str, position_type: str, amount: float, entry_price: float, leverage: float, margin_used: float):
+        self.pair = pair
+        self.position_type = position_type # 'LONG' or 'SHORT'
+        self.amount = amount # Size in asset (e.g. 0.5 BTC)
+        self.entry_price = entry_price
+        self.leverage = leverage
+        self.margin_used = margin_used # Initial collateral locked for this position in USDT
+
+    def get_unrealized_pnl(self, current_price: float) -> float:
+        """Calculate Unrealized PnL based on position type."""
+        if self.position_type == 'LONG':
+            # Buy low, sell high
+            return (current_price - self.entry_price) * self.amount
+        elif self.position_type == 'SHORT':
+            # Sell high, buy low
+            return (self.entry_price - current_price) * self.amount
+        return 0.0
+
+    def get_liquidation_price(self) -> float:
+        """
+        Estimate liquidation price.
+        Maintenance Margin is usually around 0.5% - 1% of position value, but for simplicity,
+        we liquidate when margin is depleted by 95% (to cover fees/slippage).
+        """
+        margin_threshold = self.margin_used * 0.05
+
+        if self.position_type == 'LONG':
+            # Loss = (entry - current) * amount
+            # When Loss >= margin_used - margin_threshold, liquidate.
+            # (entry - Liq) * amount = margin_used * 0.95
+            return self.entry_price - ((self.margin_used * 0.95) / self.amount)
+        elif self.position_type == 'SHORT':
+            # Loss = (current - entry) * amount
+            return self.entry_price + ((self.margin_used * 0.95) / self.amount)
+        return 0.0
+
 
 class PaperTradingEngine:
     def __init__(self, initial_balance: float = 100.0, base_currency: str = "USDT"):
-        """Initialize the trading engine with a starting balance."""
         self.base_currency = base_currency
-        self.balances: Dict[str, float] = {base_currency: initial_balance}
         self.initial_balance = initial_balance
+        self.available_cash = initial_balance
+
+        # Keep track of active margin positions
+        self.positions: Dict[str, Position] = {} # pair -> Position object
         self.trades: List[TradeInfo] = []
 
-        # We will keep track of average entry prices to calculate PnL
-        self.avg_entry_prices: Dict[str, float] = {}
-
     def get_balance(self) -> Dict[str, float]:
-        """Return all non-zero balances."""
-        return {asset: amount for asset, amount in self.balances.items() if amount > 0}
+        """Return available cash and active margin locks."""
+        return {
+            self.base_currency: self.available_cash,
+            "locked_margin": sum(p.margin_used for p in self.positions.values())
+        }
 
-    def execute_trade(self, pair: str, side: str, current_price: float, amount_in_usd: Optional[float] = None) -> bool:
-        """
-        Execute a buy or sell trade at the current market price.
-        Pair format: e.g. 'BTC_USDT'
-        side: 'BUY' or 'SELL'
-        amount_in_usd: If buying, how much USD to spend. If selling, it sells all of the asset by default if None.
-        """
-        asset, quote = pair.split('_')
-
-        if quote != self.base_currency:
-            print(f"Unsupported quote currency: {quote}")
+    def close_position(self, pair: str, current_price: float, reason: str = "MANUAL") -> bool:
+        """Close an open position (either Long or Short) completely."""
+        if pair not in self.positions:
             return False
 
-        if side == 'BUY':
-            if amount_in_usd is None:
-                # Default behavior: use a fraction of available balance (e.g. 50%) or a fixed amount
-                available_usd = self.balances.get(self.base_currency, 0)
-                amount_in_usd = available_usd * 0.5 # use 50% of available cash
+        pos = self.positions[pair]
+        pnl = pos.get_unrealized_pnl(current_price)
 
-            if amount_in_usd <= 0 or self.balances.get(self.base_currency, 0) < amount_in_usd:
-                print(f"Insufficient {self.base_currency} balance for {side} {pair}")
-                return False
+        # Return initial margin + PnL back to available cash
+        returned_cash = pos.margin_used + pnl
 
-            asset_amount = amount_in_usd / current_price
+        # Prevent negative balance, min is 0 if liquidated fully
+        if returned_cash < 0:
+            returned_cash = 0
 
-            # Deduct USD, add Asset
-            self.balances[self.base_currency] -= amount_in_usd
-            self.balances[asset] = self.balances.get(asset, 0) + asset_amount
+        self.available_cash += returned_cash
 
-            # Update avg entry price
-            current_asset_holding = self.balances[asset]
-            old_avg = self.avg_entry_prices.get(asset, 0)
-            # Weighted average
-            new_avg = ((current_asset_holding - asset_amount) * old_avg + asset_amount * current_price) / current_asset_holding
-            self.avg_entry_prices[asset] = new_avg
+        side = 'SELL' if pos.position_type == 'LONG' else 'BUY' # To close long, you sell. To close short, you buy.
+        total_value = pos.amount * current_price
 
-            trade = TradeInfo(datetime.datetime.now().timestamp(), pair, side, asset_amount, current_price, amount_in_usd)
-            self.trades.append(trade)
-            print(f"Executed {side} {asset_amount:.6f} {asset} @ {current_price:.2f} {quote} (Total: {amount_in_usd:.2f})")
-            return True
+        trade = TradeInfo(datetime.datetime.now().timestamp(), pair, f"{side}_CLOSE", pos.amount, current_price, total_value, pos.leverage, pos.position_type)
+        self.trades.append(trade)
 
-        elif side == 'SELL':
-            asset_amount = self.balances.get(asset, 0)
-            if asset_amount <= 0:
-                print(f"No {asset} balance to {side}")
-                return False
+        logger.info(f"Closed {pos.position_type} on {pair} at {current_price}. PnL: {pnl:.2f}. Reason: {reason}")
+        del self.positions[pair]
+        return True
 
-            usd_value = asset_amount * current_price
+    def open_position(self, pair: str, position_type: str, current_price: float, margin_amount: float, leverage: float = 1.0) -> bool:
+        """Open a new margin LONG or SHORT position."""
+        if pair in self.positions:
+            logger.warning(f"Position for {pair} already exists. Close it first.")
+            return False # For simplicity, 1 active position per pair at a time
 
-            # Deduct Asset, add USD
-            self.balances[asset] -= asset_amount
-            self.balances[self.base_currency] += usd_value
+        if self.available_cash < margin_amount:
+            logger.warning(f"Insufficient funds. Need {margin_amount}, have {self.available_cash}")
+            return False
 
-            # Clear average entry price since we sold everything
-            if self.balances[asset] < 1e-8: # floating point 0 check
-                self.balances[asset] = 0
-                self.avg_entry_prices[asset] = 0
+        # Deduct margin from available cash
+        self.available_cash -= margin_amount
 
-            trade = TradeInfo(datetime.datetime.now().timestamp(), pair, side, asset_amount, current_price, usd_value)
-            self.trades.append(trade)
-            print(f"Executed {side} {asset_amount:.6f} {asset} @ {current_price:.2f} {quote} (Total: {usd_value:.2f})")
-            return True
+        # Calculate actual trade size
+        leveraged_value = margin_amount * leverage
+        asset_amount = leveraged_value / current_price
 
-        return False
+        # Create position
+        pos = Position(pair, position_type, asset_amount, current_price, leverage, margin_amount)
+        self.positions[pair] = pos
 
-    def get_portfolio_value(self, current_prices: Dict[str, float]) -> Dict:
-        """
-        Calculate total portfolio value based on latest market prices.
-        current_prices format: {'BTC': 60000.0, 'ETH': 3000.0, ...}
-        """
-        total_value = self.balances.get(self.base_currency, 0)
-        asset_values = {}
+        side = 'BUY' if position_type == 'LONG' else 'SELL'
+        trade = TradeInfo(datetime.datetime.now().timestamp(), pair, f"{side}_OPEN", asset_amount, current_price, leveraged_value, leverage, position_type)
+        self.trades.append(trade)
 
-        for asset, amount in self.balances.items():
-            if asset == self.base_currency or amount <= 0:
+        logger.info(f"Opened {position_type} on {pair} at {current_price}. Margin: {margin_amount}, Lev: {leverage}x, Size: {asset_amount:.6f}")
+        return True
+
+    def check_liquidations_and_limits(self, current_prices: Dict[str, float], stop_loss_pct: float, take_profit_pct: float):
+        """Iterate positions and close them if they hit liquidation, SL, or TP."""
+        pairs_to_close = []
+        for pair, pos in self.positions.items():
+            asset = pair.split('_')[0]
+            price = current_prices.get(asset)
+            if not price:
                 continue
 
-            price = current_prices.get(asset, 0)
-            value = amount * price
-            asset_values[asset] = {
-                "amount": amount,
-                "price": price,
-                "value": value,
-                "avg_entry": self.avg_entry_prices.get(asset, 0),
-                "pnl_pct": ((price - self.avg_entry_prices.get(asset, 0)) / self.avg_entry_prices.get(asset, 1)) * 100 if self.avg_entry_prices.get(asset, 0) > 0 else 0
+            liq_price = pos.get_liquidation_price()
+            unrealized_pnl = pos.get_unrealized_pnl(price)
+            pnl_pct = unrealized_pnl / pos.margin_used # relative to initial margin
+
+            # 1. Liquidation Check
+            if (pos.position_type == 'LONG' and price <= liq_price) or \
+               (pos.position_type == 'SHORT' and price >= liq_price):
+                pairs_to_close.append((pair, "LIQUIDATION"))
+
+            # 2. Stop Loss Check
+            elif pnl_pct <= -stop_loss_pct:
+                pairs_to_close.append((pair, "STOP_LOSS"))
+
+            # 3. Take Profit Check
+            elif pnl_pct >= take_profit_pct:
+                pairs_to_close.append((pair, "TAKE_PROFIT"))
+
+        # Close them
+        for pair, reason in pairs_to_close:
+            asset = pair.split('_')[0]
+            self.close_position(pair, current_prices[asset], reason=reason)
+
+    def get_portfolio_value(self, current_prices: Dict[str, float]) -> Dict:
+        """Calculate total portfolio value including unrealized PnL."""
+        total_unrealized_pnl = 0.0
+        locked_margin = 0.0
+        assets = {}
+
+        for pair, pos in self.positions.items():
+            asset = pair.split('_')[0]
+            price = current_prices.get(asset, pos.entry_price) # fallback to entry if missing
+
+            pnl = pos.get_unrealized_pnl(price)
+            total_unrealized_pnl += pnl
+            locked_margin += pos.margin_used
+
+            assets[asset] = {
+                "type": pos.position_type,
+                "amount": pos.amount,
+                "entry_price": pos.entry_price,
+                "current_price": price,
+                "leverage": pos.leverage,
+                "margin_used": pos.margin_used,
+                "unrealized_pnl": pnl,
+                "pnl_pct": (pnl / pos.margin_used) * 100 if pos.margin_used > 0 else 0,
+                "liquidation_price": pos.get_liquidation_price()
             }
-            total_value += value
+
+        total_value = self.available_cash + locked_margin + total_unrealized_pnl
 
         return {
             "total_value_usd": total_value,
-            "cash_usd": self.balances.get(self.base_currency, 0),
-            "assets": asset_values,
+            "cash_usd": self.available_cash,
+            "locked_margin_usd": locked_margin,
+            "assets": assets,
             "total_pnl_usd": total_value - self.initial_balance,
             "total_pnl_pct": ((total_value - self.initial_balance) / self.initial_balance) * 100
         }
 
     def get_trade_history(self) -> List[Dict]:
-        return [trade.to_dict() for trade in reversed(self.trades)] # Newest first
-
-if __name__ == "__main__":
-    engine = PaperTradingEngine(100.0)
-    print("Initial Balance:", engine.get_balance())
-
-    # Simulate Buy BTC
-    engine.execute_trade('BTC_USDT', 'BUY', 65000.0, amount_in_usd=25.0)
-    # Simulate Buy ETH
-    engine.execute_trade('ETH_USDT', 'BUY', 2000.0, amount_in_usd=25.0)
-
-    print("\nBalance after buys:", engine.get_balance())
-
-    # Simulate price changes
-    prices = {'BTC': 66000.0, 'ETH': 1900.0}
-    print("\nPortfolio Value:", json.dumps(engine.get_portfolio_value(prices), indent=2))
-
-    # Simulate Sell BTC
-    engine.execute_trade('BTC_USDT', 'SELL', 66000.0)
-
-    print("\nFinal Portfolio Value:", json.dumps(engine.get_portfolio_value(prices), indent=2))
-    print("\nTrade History:")
-    print(json.dumps(engine.get_trade_history(), indent=2))
+        return [trade.to_dict() for trade in reversed(self.trades)]

@@ -2,13 +2,17 @@ import pandas as pd
 import ta
 
 class TradingAlgorithm:
-    def __init__(self, rsi_period=14, macd_fast=12, macd_slow=26, macd_signal=9, bb_period=20, bb_std=2):
+    def __init__(self, rsi_period=14, macd_fast=12, macd_slow=26, macd_signal=9, bb_period=20, bb_std=2, interval="1m", leverage=1.0, take_profit=0.05, stop_loss=0.02):
         self.rsi_period = rsi_period
         self.macd_fast = macd_fast
         self.macd_slow = macd_slow
         self.macd_signal = macd_signal
         self.bb_period = bb_period
         self.bb_std = bb_std
+        self.interval = interval
+        self.leverage = leverage
+        self.take_profit = take_profit
+        self.stop_loss = stop_loss
 
     def update_params(self, params: dict):
         if 'rsi_period' in params: self.rsi_period = int(params['rsi_period'])
@@ -17,6 +21,10 @@ class TradingAlgorithm:
         if 'macd_signal' in params: self.macd_signal = int(params['macd_signal'])
         if 'bb_period' in params: self.bb_period = int(params['bb_period'])
         if 'bb_std' in params: self.bb_std = float(params['bb_std'])
+        if 'interval' in params: self.interval = str(params['interval'])
+        if 'leverage' in params: self.leverage = float(params['leverage'])
+        if 'take_profit' in params: self.take_profit = float(params['take_profit'])
+        if 'stop_loss' in params: self.stop_loss = float(params['stop_loss'])
 
     def add_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Adds RSI, MACD, and Bollinger Bands to the DataFrame."""
@@ -66,7 +74,7 @@ class TradingAlgorithm:
         if pd.isna(latest['rsi']) or pd.isna(latest['macd']) or pd.isna(latest['bb_high']):
             return 'HOLD'
 
-        # Buy Signal Conditions
+        # LONG Signal Conditions (Bullish)
         # 1. RSI is oversold (< 30) or recovering from oversold (previous < 30, latest > 30)
         # 2. MACD crosses above Signal Line
         # 3. Price touches or crosses below lower Bollinger Band
@@ -78,9 +86,9 @@ class TradingAlgorithm:
         # We need at least 2 out of 3 signals to align for a strong buy
         buy_signals = sum([buy_condition_rsi, buy_condition_macd, buy_condition_bb])
         if buy_signals >= 2:
-            return 'BUY'
+            return 'LONG'
 
-        # Sell Signal Conditions
+        # SHORT Signal Conditions (Bearish)
         # 1. RSI is overbought (> 70)
         # 2. MACD crosses below Signal Line
         # 3. Price touches or crosses above upper Bollinger Band
@@ -91,7 +99,7 @@ class TradingAlgorithm:
 
         sell_signals = sum([sell_condition_rsi, sell_condition_macd, sell_condition_bb])
         if sell_signals >= 2:
-            return 'SELL'
+            return 'SHORT'
 
         return 'HOLD'
 

@@ -45,7 +45,11 @@ latest_state = {
         "macd_slow": algo.macd_slow,
         "macd_signal": algo.macd_signal,
         "bb_period": algo.bb_period,
-        "bb_std": algo.bb_std
+        "bb_std": algo.bb_std,
+        "interval": algo.interval,
+        "leverage": algo.leverage,
+        "take_profit": algo.take_profit,
+        "stop_loss": algo.stop_loss
     }
 }
 
@@ -87,7 +91,8 @@ async def run_bot_loop():
 
             latest_state["prices"] = current_prices
 
-            # 2. Update Portfolio Value
+            # 2. Update Portfolio Value & Check Liquidations/SL/TP
+            engine.check_liquidations_and_limits(current_prices, algo.stop_loss, algo.take_profit)
             latest_state["portfolio"] = engine.get_portfolio_value(current_prices)
 
             # 3. Analyze Data and Generate Signals
@@ -95,7 +100,7 @@ async def run_bot_loop():
             metrics = {}
             for pair in TRADE_PAIRS:
                 # Need sufficient historical data for MA/RSI/Bollinger Bands
-                df = gateio.get_candlesticks(pair, interval="1m", limit=100)
+                df = gateio.get_candlesticks(pair, interval=algo.interval, limit=100)
                 df_with_indicators = algo.add_indicators(df)
                 signal = algo.evaluate(df_with_indicators)
                 signals[pair] = signal
@@ -115,21 +120,26 @@ async def run_bot_loop():
                 current_price = float(tickers[pair]['last'])
                 asset = pair.split('_')[0]
 
-                # Simple portfolio sizing logic: max 25% of initial balance per trade to diversify
-                trade_amount_usd = 25.0
+                # Simple portfolio sizing logic: allocate fixed margin per trade
+                margin_amount_usd = 25.0
 
-                if signal == 'BUY':
-                    # Only buy if we have enough cash
-                    if engine.balances.get('USDT', 0) >= trade_amount_usd:
-                        success = engine.execute_trade(pair, 'BUY', current_price, amount_in_usd=trade_amount_usd)
-                        if success:
-                            logger.info(f"Bot Executed BUY for {pair}")
-                elif signal == 'SELL':
-                    # Only sell if we have the asset
-                    if engine.balances.get(asset, 0) > 0:
-                        success = engine.execute_trade(pair, 'SELL', current_price)
-                        if success:
-                             logger.info(f"Bot Executed SELL for {pair}")
+                # Close opposite positions or identical signals handled by engine logic loosely
+                # If we get a SHORT signal but we are LONG, close the LONG first.
+                current_position = engine.positions.get(pair)
+
+                if signal == 'LONG':
+                    if current_position and current_position.position_type == 'SHORT':
+                        engine.close_position(pair, current_price, reason="SIGNAL_REVERSAL")
+
+                    if not engine.positions.get(pair): # Open if no position
+                        engine.open_position(pair, 'LONG', current_price, margin_amount=margin_amount_usd, leverage=algo.leverage)
+
+                elif signal == 'SHORT':
+                    if current_position and current_position.position_type == 'LONG':
+                        engine.close_position(pair, current_price, reason="SIGNAL_REVERSAL")
+
+                    if not engine.positions.get(pair): # Open if no position
+                        engine.open_position(pair, 'SHORT', current_price, margin_amount=margin_amount_usd, leverage=algo.leverage)
 
             latest_state["signals"] = signals
             latest_state["metrics"] = metrics
@@ -192,15 +202,21 @@ async def update_params(request: Request):
         "macd_slow": algo.macd_slow,
         "macd_signal": algo.macd_signal,
         "bb_period": algo.bb_period,
-        "bb_std": algo.bb_std
+        "bb_std": algo.bb_std,
+        "interval": algo.interval,
+        "leverage": algo.leverage,
+        "take_profit": algo.take_profit,
+        "stop_loss": algo.stop_loss
     }
     logger.info(f"Updated Algo Params: {latest_state['algo_params']}")
     return {"status": "success", "message": "Parameters updated"}
 
 @app.get("/api/historical/{pair}")
-def get_historical_data(pair: str, limit: int = 200):
+def get_historical_data(pair: str, interval: str = "1m", limit: int = 200):
     """Get raw historical data for custom charting."""
-    df = gateio.get_candlesticks(pair, interval="1m", limit=limit)
+    # Use the globally configured interval if none explicitly passed, or let user request specific
+    use_interval = interval if interval else algo.interval
+    df = gateio.get_candlesticks(pair, interval=use_interval, limit=limit)
     if df.empty:
         return []
 
